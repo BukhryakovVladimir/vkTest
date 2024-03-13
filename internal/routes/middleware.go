@@ -1,11 +1,13 @@
 package routes
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 
@@ -29,6 +31,23 @@ func jwtCheck(cookie *http.Cookie) (*jwt.Token, error) {
 	})
 
 	return token, err
+}
+
+func isAdmin(issuer string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
+	defer cancel()
+
+	var isAdmin bool
+
+	isAdminQuery := `SELECT isAdmin FROM person WHERE id = $1`
+
+	err := db.QueryRowContext(ctx, isAdminQuery, issuer).Scan(&isAdmin)
+
+	if err != nil {
+		return false, err
+	}
+
+	return isAdmin, nil
 }
 
 // InitConnPool создаёт пул соединений с БД
