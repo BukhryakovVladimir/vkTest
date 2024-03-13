@@ -127,17 +127,7 @@ func LoginPerson(w http.ResponseWriter, r *http.Request) {
 
 	var userID, passwordHash string
 	if err := row.Scan(&userID, &passwordHash); err != nil {
-		resp, err := json.Marshal("Username not found")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, err = w.Write(resp)
-		if err != nil {
-			log.Printf("Write failed: %v\n", err)
-		}
+		http.Error(w, "Username not found", http.StatusNotFound)
 		return
 	}
 
@@ -147,17 +137,7 @@ func LoginPerson(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(person.Password)); err != nil {
-		resp, err := json.Marshal("Incorrect password")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, err = w.Write(resp)
-		if err != nil {
-			log.Printf("Write failed: %v\n", err)
-		}
+		http.Error(w, "Incorrect password", http.StatusUnauthorized)
 		return
 	}
 
@@ -169,17 +149,7 @@ func LoginPerson(w http.ResponseWriter, r *http.Request) {
 	token, err := claims.SignedString([]byte(secretKey))
 
 	if err != nil {
-		resp, err := json.Marshal("Could not login")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, err = w.Write(resp)
-		if err != nil {
-			log.Printf("Write failed: %v\n", err)
-		}
+		http.Error(w, "Could not login", http.StatusUnauthorized)
 		return
 	}
 
