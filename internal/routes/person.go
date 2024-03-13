@@ -68,7 +68,7 @@ func SignupPerson(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			log.Println("signup_userDB QueryRowContext deadline exceeded: ", err)
+			log.Println("SignupPerson QueryRowContext deadline exceeded: ", err)
 			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
 			return
 		}
@@ -83,11 +83,11 @@ func SignupPerson(w http.ResponseWriter, r *http.Request) {
 			log.Println("Unique key violation, username already exists: ", err)
 			http.Error(w, "Username already exists", http.StatusGatewayTimeout)
 			return
-		} else {
-			log.Println("Database error: ", pgErr)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
+
+		log.Println("Database error: ", pgErr)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	resp, err := json.Marshal("Signup successful")
@@ -124,7 +124,17 @@ func LoginPerson(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	row := db.QueryRowContext(ctx, getUserDataQuery, person.Username)
+	if err = row.Err(); err != nil {
+		if errors.Is(row.Err(), context.DeadlineExceeded) {
+			log.Println("LoginPerson QueryRowContext deadline exceeded: ", err)
+			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
+			return
+		}
 
+		log.Println("Database error: ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	var userID, passwordHash string
 	if err := row.Scan(&userID, &passwordHash); err != nil {
 		http.Error(w, "Username not found", http.StatusNotFound)
