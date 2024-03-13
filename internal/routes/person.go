@@ -8,7 +8,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -23,46 +22,26 @@ func SignupPerson(w http.ResponseWriter, r *http.Request) {
 
 	var person model.Person
 
-	bytes, err := io.ReadAll(r.Body)
+	err := json.NewDecoder(r.Body).Decode(&person)
 
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
 		return
 	}
 
-	err = json.Unmarshal(bytes, &person)
-
 	person.Username = strings.ToLower(person.Username)
 
 	if !isValidUsername(person.Username) {
-		resp, err := json.Marshal("Username should have at least 3 characters and consist only of English letters and digits.")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, err = w.Write(resp)
-		if err != nil {
-			log.Printf("Write failed: %v\n", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		http.Error(w,
+			"Username should have at least 3 characters and consist only of English letters and digits.",
+			http.StatusBadRequest)
 		return
 	}
 
 	if !isValidPassword(person.Password) {
-		resp, err := json.Marshal("Password should have at least 8 characters and include both English letters and digits. Special characters optionally.")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, err = w.Write(resp)
-		if err != nil {
-			log.Printf("Write failed: %v\n", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+		http.Error(w,
+			"Password should have at least 8 characters and include both English letters and digits. Special characters optionally.",
+			http.StatusBadRequest)
 		return
 	}
 
@@ -132,15 +111,10 @@ func LoginPerson(w http.ResponseWriter, r *http.Request) {
 
 	var person model.Person
 
-	bytes, err := io.ReadAll(r.Body)
+	err := json.NewDecoder(r.Body).Decode(&person)
+
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
-		return
-	}
-
-	err = json.Unmarshal(bytes, &person)
-	if err != nil {
-		http.Error(w, "Error parsing JSON", http.StatusBadRequest)
 		return
 	}
 
