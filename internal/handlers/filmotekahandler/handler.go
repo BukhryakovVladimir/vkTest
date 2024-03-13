@@ -5,12 +5,7 @@ import (
 	"net/http"
 )
 
-type apiHandler struct{}
-
-func (apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
-
 func SetupRoutes(mux *http.ServeMux) {
-
-	mux.Handle("/api/", apiHandler{})
-	mux.HandleFunc("POST /signup", routes.SignupPerson)
+	mux.HandleFunc("POST /api/signup", routes.SignupPerson)
+	mux.HandleFunc("POST /api/login", routes.LoginPerson)
 }
