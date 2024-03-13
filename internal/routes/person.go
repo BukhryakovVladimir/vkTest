@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/BukhryakovVladimir/vkTest/internal/model"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 	"io"
@@ -123,6 +124,109 @@ func SignupPerson(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Write failed: %v\n", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+}
+
+func LoginPerson(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	var person model.Person
+
+	bytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.Unmarshal(bytes, &person)
+	if err != nil {
+		http.Error(w, "Error parsing JSON", http.StatusBadRequest)
+		return
+	}
+
+	getUserDataQuery := `SELECT id, password FROM person WHERE username = $1::text`
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
+	defer cancel()
+
+	row := db.QueryRowContext(ctx, getUserDataQuery, person.Username)
+
+	var userID, passwordHash string
+	if err := row.Scan(&userID, &passwordHash); err != nil {
+		resp, err := json.Marshal("Username not found")
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, err = w.Write(resp)
+		if err != nil {
+			log.Printf("Write failed: %v\n", err)
+		}
+		return
+	}
+
+	if err := row.Err(); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(person.Password)); err != nil {
+		resp, err := json.Marshal("Incorrect password")
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, err = w.Write(resp)
+		if err != nil {
+			log.Printf("Write failed: %v\n", err)
+		}
+		return
+	}
+
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    userID,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 30)),
+	})
+
+	token, err := claims.SignedString([]byte(secretKey))
+
+	if err != nil {
+		resp, err := json.Marshal("Could not login")
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, err = w.Write(resp)
+		if err != nil {
+			log.Printf("Write failed: %v\n", err)
+		}
+		return
+	}
+
+	tokenCookie := http.Cookie{
+		Name:     jwtName,
+		Value:    token,
+		Expires:  time.Now().Add(time.Hour * 24 * 30),
+		HttpOnly: false,
+	}
+
+	http.SetCookie(w, &tokenCookie)
+	resp, err := json.Marshal("Successfully logged in")
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(resp)
+	if err != nil {
+		log.Printf("Write failed: %v\n", err)
 	}
 }
 
