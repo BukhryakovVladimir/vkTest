@@ -565,3 +565,114 @@ func GetActorsWithID(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func GetActors(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	cookie, err := r.Cookie(jwtName)
+
+	if err != nil {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := jwtCheck(cookie)
+
+	if err != nil {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
+	defer cancel()
+
+	getActorsWithMoviesQuery := `
+		SELECT a.firstName, a.lastName, a.sex, a.birthDate, m.name, m.description, m.date, m.rating
+		FROM actor a
+		JOIN actormovie ma ON a.id = ma.actor_id
+		JOIN movie m ON m.id = ma.movie_id
+		ORDER BY a.id
+	`
+
+	rows, err := db.QueryContext(ctx, getActorsWithMoviesQuery)
+	defer rows.Close()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Println("GetMoviesOrdered QueryContext deadline exceeded: ", err)
+			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
+			return
+		} else {
+			log.Println("Database error: ", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	var actors []model.ActorAndMovies
+	var currentActor *model.ActorAndMovies
+
+	for rows.Next() {
+		var actor model.ActorAndMovies
+		var movie model.Movie
+
+		if err := rows.Scan(&actor.FirstName, &actor.LastName, &actor.Sex, &actor.BirthDate,
+			&movie.Name, &movie.Description, &movie.Date, &movie.Rating); err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Check if we're still processing the same movie
+		if currentActor != nil && actor.FirstName == currentActor.FirstName &&
+			actor.LastName == currentActor.LastName &&
+			actor.BirthDate == currentActor.BirthDate {
+			// Add actor to the current movie's actor list
+			currentActor.Movies = append(currentActor.Movies, movie)
+		} else {
+			// We've encountered a new movie, so add the previous one to the movies slice
+			if currentActor != nil {
+				actors = append(actors, *currentActor)
+			}
+			// Start aggregating actors for the new movie
+			actor.Movies = []model.Movie{movie}
+			currentActor = &actor
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if currentActor != nil {
+		actors = append(actors, *currentActor)
+	}
+
+	resp, err := json.Marshal(actors)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(resp)
+	if err != nil {
+		log.Printf("Write failed: %v\n", err)
+	}
+}
