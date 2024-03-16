@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/BukhryakovVladimir/vkTest/internal/model"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/lib/pq"
 	"log"
 	"net/http"
 	"time"
@@ -69,24 +70,40 @@ func AddActor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	addActorQuery := `INSERT INTO actor (firstName, lastName, sex, birthDate) 
-						VALUES ($1::text, $2::text, $3::text, $4)`
+	addActorQuery := `
+	INSERT INTO actor (firstName, lastName, sex, birthDate) 
+	VALUES ($1::text, $2::text, $3::text, $4)
+	ON CONFLICT (firstName, lastName, birthDate) DO NOTHING;`
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
 	defer cancel()
 
-	_, err = db.ExecContext(ctx, addActorQuery, actor.FirstName, actor.LastName, actor.Sex, actor.BirthDate)
+	result, err := db.ExecContext(ctx, addActorQuery, actor.FirstName, actor.LastName, actor.Sex, actor.BirthDate)
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			log.Println("AddActor ExecContext deadline exceeded: ", err)
 			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
 			return
-		} else {
-			log.Println("Database error: ", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
+
+		log.Println("Database error: ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("AddActor error checking rows affected : ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		log.Println("AddActor actor already exists, no rows affected")
+		http.Error(w, "Actor already exists", http.StatusBadRequest)
+		return
 	}
 
 	resp, err := json.Marshal("Actor added successfully")
@@ -131,7 +148,7 @@ func UpdateActor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isAdmin {
-		http.Error(w, "You do not have administrator privileges to add actors", http.StatusUnauthorized)
+		http.Error(w, "You do not have administrator privileges to update actors", http.StatusUnauthorized)
 		return
 	}
 
@@ -182,11 +199,21 @@ func UpdateActor(w http.ResponseWriter, r *http.Request) {
 			log.Println("UpdateActor ExecContext deadline exceeded: ", err)
 			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
 			return
-		} else {
-			log.Println("Database error: ", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
+
+		var errPQ *pq.Error
+		if errors.As(err, &errPQ) {
+			if errPQ.Code == "23505" {
+				log.Println("Actor already exists: ", errPQ)
+				http.Error(w, "Actor already exits", http.StatusBadRequest)
+				return
+			}
+		}
+
+		log.Println("Database error: ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+
 	}
 
 	resp, err := json.Marshal("Actor updated successfully")
@@ -231,7 +258,7 @@ func DeleteActor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isAdmin {
-		http.Error(w, "You do not have administrator privileges to add actors", http.StatusUnauthorized)
+		http.Error(w, "You do not have administrator privileges to delete actors", http.StatusUnauthorized)
 		return
 	}
 
@@ -250,33 +277,27 @@ func DeleteActor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deleteActorQuery := `DELETE FROM actor WHERE id = $1;`
-
-	// queryTimeLimit is multiplied by 2, because ctx is used by two queries
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(2*queryTimeLimit)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
 	defer cancel()
 
-	_, err = db.ExecContext(ctx, deleteActorQuery, actor.ID)
+	tx, err := db.BeginTx(ctx, nil)
 
 	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			log.Println("DeleteActor ExecContext deadline exceeded: ", err)
-			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
-			return
-		} else {
-			log.Println("Database error: ", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
+		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+		return
 	}
-
-	log.Println("Deleted actor with id = ", actor.ID, " from Actor table")
 
 	deleteActorMovieQuery := `DELETE FROM actormovie WHERE actor_id = $1;`
 
-	_, err = db.ExecContext(ctx, deleteActorMovieQuery, actor.ID)
+	result, err := tx.ExecContext(ctx, deleteActorMovieQuery, actor.ID)
 
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("DeleteActor Failed to rollback transaction: %v\n", rollbackErr)
+		} else {
+			log.Println("DeleteActor transaction rollback")
+		}
+
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			log.Println("DeleteActor ExecContext deadline exceeded: ", err)
 			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
@@ -288,11 +309,84 @@ func DeleteActor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Println("Deleted actor with id = ", actor.ID, " from ActorMovie table")
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("DeleteActor Failed to rollback transaction: %v\n", rollbackErr)
+		} else {
+			log.Println("DeleteActor transaction rollback")
+		}
+
+		log.Println("DeleteActor error checking rows affected : ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		log.Println("DeleteActor ActorMovie table. ActorMovie relations don't exist, no rows affected")
+	} else {
+		log.Println("DeleteActor Deleted actor with id = ", actor.ID, " from ActorMovie table")
+	}
+
+	deleteActorQuery := `DELETE FROM actor WHERE id = $1;`
+
+	result, err = tx.ExecContext(ctx, deleteActorQuery, actor.ID)
+
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("DeleteActor Failed to rollback transaction: %v\n", rollbackErr)
+		} else {
+			log.Println("DeleteActor transaction rollback")
+		}
+
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Println("DeleteActor ExecContext deadline exceeded: ", err)
+			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
+			return
+		} else {
+			log.Println("Database error: ", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	rowsAffected, err = result.RowsAffected()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("DeleteActor Failed to rollback transaction: %v\n", rollbackErr)
+		} else {
+			log.Println("DeleteActor transaction rollback")
+		}
+
+		log.Println("DeleteActor error checking rows affected : ", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		log.Println("DeleteActor actor table. Actor doesn't exist, no rows affected")
+		http.Error(w, "Actor doesn't exist. Nothing deleted", http.StatusBadRequest)
+		return
+	}
+
+	log.Println("DeleteActor Deleted actor with id = ", actor.ID, " from Actor table")
 
 	resp, err := json.Marshal("Actor deleted successfully")
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("DeleteActor Failed to rollback transaction: %v\n", rollbackErr)
+		} else {
+			log.Println("DeleteActor transaction rollback")
+		}
+
+		log.Println("DeleteActor error committing transaction")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -332,7 +426,7 @@ func GetActorsWithID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isAdmin {
-		http.Error(w, "You do not have administrator privileges to add actors", http.StatusUnauthorized)
+		http.Error(w, "You do not have administrator privileges to get actors with id", http.StatusUnauthorized)
 		return
 	}
 
