@@ -886,3 +886,137 @@ func GetMoviesWithID(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Write failed: %v\n", err)
 	}
 }
+
+func SearchMovie(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	cookie, err := r.Cookie(jwtName)
+
+	if err != nil {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := jwtCheck(cookie)
+
+	if err != nil {
+		http.Error(w, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
+	var movie model.SearchMovie
+
+	err = json.NewDecoder(r.Body).Decode(&movie)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+
+	if len([]rune(movie.Name)) > 150 {
+		http.Error(w, "Movie name maximum length is 150 characters", http.StatusBadRequest)
+		return
+	}
+
+	if len([]rune(movie.ActorFirstName)) > 255 {
+		http.Error(w, "Actor firstName maximum length is 255 characters", http.StatusBadRequest)
+		return
+	}
+
+	if len([]rune(movie.ActorLastName)) > 255 {
+		http.Error(w, "Actor firstName maximum length is 255 characters", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
+	defer cancel()
+
+	searchMovieQuery := `
+		SELECT m.name, m.description, m.date, m.rating, a.firstName, a.lastName, a.sex, a.birthDate
+		FROM movie m
+		JOIN actormovie ma ON m.id = ma.movie_id
+		JOIN actor a ON a.id = ma.actor_id
+		WHERE ($1 <> '' AND m.name LIKE '%' || $1 || '%')
+		OR (($2 <> '' AND a.firstName LIKE '%' || $2 || '%')
+    	OR ($3 <> '' AND a.lastName LIKE '%' || $3 || '%'));
+	`
+
+	rows, err := db.QueryContext(ctx, searchMovieQuery, movie.Name, movie.ActorFirstName, movie.ActorLastName)
+	defer rows.Close()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Println("SearchMovie QueryContext deadline exceeded: ", err)
+			http.Error(w, "Database query time limit exceeded", http.StatusGatewayTimeout)
+			return
+		} else {
+			log.Println("Database error: ", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	var movies []model.Movie
+	var currentMovie *model.Movie
+
+	for rows.Next() {
+		var movie model.Movie
+		var actor model.Actor
+
+		if err := rows.Scan(&movie.Name, &movie.Description, &movie.Date, &movie.Rating,
+			&actor.FirstName, &actor.LastName, &actor.Sex, &actor.BirthDate); err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Check if we're still processing the same movie
+		if currentMovie != nil && movie.Name == currentMovie.Name && movie.Date == currentMovie.Date {
+			// Add actor to the current movie's actor list
+			currentMovie.Actors = append(currentMovie.Actors, actor)
+		} else {
+			// We've encountered a new movie, so add the previous one to the movies slice
+			if currentMovie != nil {
+				movies = append(movies, *currentMovie)
+			}
+			// Start aggregating actors for the new movie
+			movie.Actors = []model.Actor{actor}
+			currentMovie = &movie
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if currentMovie != nil {
+		movies = append(movies, *currentMovie)
+	}
+
+	resp, err := json.Marshal(movies)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(resp)
+	if err != nil {
+		log.Printf("Write failed: %v\n", err)
+	}
+}

@@ -22,4 +22,5 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/delete-actor-from-movie", routes.DeleteActorFromMovie)
 
 	mux.HandleFunc("GET /api/movies", routes.GetMoviesOrdered)
+	mux.HandleFunc("POST /api/search-movie", routes.SearchMovie)
 }
