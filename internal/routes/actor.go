@@ -31,6 +31,18 @@ func AddActor(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -141,6 +153,18 @@ func UpdateActor(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -250,6 +274,18 @@ func DeleteActor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
 
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
@@ -418,6 +454,18 @@ func GetActorsWithID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
 
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {

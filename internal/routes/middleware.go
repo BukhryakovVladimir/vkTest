@@ -50,6 +50,29 @@ func isAdmin(issuer string) (bool, error) {
 	return isAdmin, nil
 }
 
+func checkUserExists(issuer string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(queryTimeLimit)*time.Second)
+	defer cancel()
+
+	userExistsQuery := `SELECT username FROM person WHERE id = $1`
+
+	var username string
+	err := db.QueryRowContext(ctx, userExistsQuery, issuer).Scan(&username)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, errors.New("user not found. Unauthorized access not allowed")
+		}
+		return false, err
+	}
+
+	if username != "" {
+		return true, nil
+	}
+
+	return false, errors.New("user not found. Unauthorized access not allowed")
+}
+
 // InitConnPool создаёт пул соединений с БД
 func InitConnPool() error {
 	var err error

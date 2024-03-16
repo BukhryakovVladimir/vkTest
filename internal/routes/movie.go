@@ -31,6 +31,18 @@ func AddMovie(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -212,6 +224,18 @@ func UpdateMovie(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -319,6 +343,18 @@ func DeleteMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
 
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
@@ -488,6 +524,18 @@ func AddActorToMovie(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -631,6 +679,18 @@ func DeleteActorFromMovie(w http.ResponseWriter, r *http.Request) {
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
 
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
+
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
 		http.Error(w, "Error while checking administrator privileges", http.StatusInternalServerError)
@@ -717,6 +777,18 @@ func GetMoviesWithID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := token.Claims.(*jwt.RegisteredClaims)
+
+	userExists, err := checkUserExists(claims.Issuer)
+	if err != nil {
+		http.Error(w, "Error while checking user authorization", http.StatusInternalServerError)
+		return
+	}
+
+	if !userExists {
+		log.Println("User with id ", claims.Issuer, "does not exist: ", err)
+		http.Error(w, "You are not logged in", http.StatusUnauthorized)
+		return
+	}
 
 	isAdmin, err := isAdmin(claims.Issuer)
 	if err != nil {
