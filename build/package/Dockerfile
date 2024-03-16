@@ -17,8 +17,7 @@ COPY ./cmd/filmoteka /go/src/app/cmd/filmoteka
 COPY ./internal /go/src/app/internal
 
 # Copy go mod and sum files
-#COPY go.mod go.sum /go/src/app/
-COPY go.mod /go/src/app/
+COPY go.mod go.sum /go/src/app/
 
 # Copy the environment file
 COPY .env /go/src/app/.env

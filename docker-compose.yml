@@ -32,7 +32,6 @@ services:
     networks:
       - filmoteka
 
-
   filmoteka-postgres:
     image: postgres:latest
     container_name: filmoteka_db_postgres
@@ -49,19 +48,6 @@ services:
     networks:
       - filmoteka
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin_container
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-    depends_on:
-      - filmoteka-postgres
-    ports:
-      - "5050:80"
-    networks:
-      - filmoteka
-    restart: unless-stopped
 
 volumes:
   api:
