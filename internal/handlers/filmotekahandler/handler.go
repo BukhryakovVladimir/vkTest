@@ -20,4 +20,6 @@ func SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/get-movies-with-id", routes.GetMoviesWithID)
 	mux.HandleFunc("POST /api/add-actor-to-movie", routes.AddActorToMovie)
 	mux.HandleFunc("DELETE /api/delete-actor-from-movie", routes.DeleteActorFromMovie)
+
+	mux.HandleFunc("GET /api/movies", routes.GetMoviesOrdered)
 }
