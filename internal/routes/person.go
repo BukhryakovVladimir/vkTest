@@ -45,6 +45,11 @@ func SignupPerson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if person.BirthDate.After(time.Now()) {
+		http.Error(w, "Birth date cannot be in the future", http.StatusBadRequest)
+		return
+	}
+
 	insertPersonQuery := `INSERT INTO person (username, password, firstName, lastName, sex, birthDate, isAdmin) 
 							VALUES ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, false);`
 
