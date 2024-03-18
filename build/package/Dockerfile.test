@@ -1,0 +1,36 @@
+# Start from golang base image
+FROM golang:alpine as builder
+
+# Install git.
+# Git is required for fetching the dependencies.
+RUN apk update && apk add --no-cache git
+
+# Set the current working directory inside the container
+WORKDIR /go/src/app/
+
+# Copy go mod and sum files
+COPY go.mod go.sum /go/src/app/
+
+# Copy the environment file
+COPY test.env /go/src/app/.env
+
+# Download all dependencies. Dependencies will be cached if the go.mod and the go.sum files are not changed
+RUN go mod download
+
+# Copy the source from the current directory to the working Directory inside the container
+COPY . .
+
+# Install dockerize
+RUN apk --no-cache add wget
+RUN wget https://github.com/jwilder/dockerize/releases/download/v0.6.1/dockerize-alpine-linux-amd64-v0.6.1.tar.gz \
+    && tar -C /usr/local/bin -xzvf dockerize-alpine-linux-amd64-v0.6.1.tar.gz \
+    && rm dockerize-alpine-linux-amd64-v0.6.1.tar.gz
+
+# Wait for PostgreSQL to be ready before running the application
+CMD dockerize -wait tcp://filmoteka-postgres-test:5432 -timeout 60s go test -v ./...
+
+#CMD dockerize -wait tcp://filmoteka-postgres-test:5432 -timeout 60s go test -cover ./...
+
+#CMD dockerize -wait tcp://filmoteka-postgres-test:5432 -timeout 60s go test -v -coverpkg=./... -coverprofile=profile.cov ./... && go tool cover -func profile.cov
+
+#CMD dockerize -wait tcp://filmoteka-postgres-test:5432 -timeout 60s go test -cover ./internal/routes/person_test.go
