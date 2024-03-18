@@ -1,0 +1,56 @@
+version: '3'
+services:
+  golang-test:
+    container_name: filmoteka_golang_test
+    env_file:
+      - test.env
+    build:
+      context: .
+      dockerfile: ./build/package/Dockerfile.test
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_NAME=${DB_NAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_NAME=${JWT_NAME}
+      - PORT=${PORT}
+      - QUERY_TIME_LIMIT=${QUERY_TIME_LIMIT}
+      - MAX_OPEN_CONNS=${MAX_OPEN_CONNS}
+      - MAX_IDLE_CONNS=${MAX_IDLE_CONNS}
+      - CONN_MAX_LIFETIME=${CONN_MAX_LIFETIME}
+    volumes:
+      - api:/usr/src/golang/
+    depends_on:
+      - filmoteka-postgres-test
+    networks:
+      - filmoteka_test
+
+  filmoteka-postgres-test:
+    image: postgres:latest
+    container_name: filmoteka_db_postgres_test
+    env_file:
+      - test.env
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+      - DATABASE_HOST=${DB_HOST}
+    ports:
+      - "2345:5432"
+    volumes:
+      - database_postgres_test:/var/lib/postgresql/data
+      - ./internal/postgres/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - filmoteka_test
+
+
+volumes:
+  api:
+  database_postgres_test:
+
+# Сети, создаваемые для коммуникации между контейнерами
+networks:
+  filmoteka_test:
+    driver: bridge
