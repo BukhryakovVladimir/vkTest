@@ -39,12 +39,16 @@
 ```
 make test
 ```
+![image](https://github.com/BukhryakovVladimir/vkTest/assets/43881945/e8f22d2f-2df6-4ddb-a405-1c4cb3250b86)
+
 
 # Запуск
 Чтобы запустить введите команду в терминале
 ```
 make run
 ```
+![image](https://github.com/BukhryakovVladimir/vkTest/assets/43881945/5bc6f36a-2301-47be-9bb1-7f855b438684)
+
 
 # Примеры
 **localhost:3000/api/signup**
